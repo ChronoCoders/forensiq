@@ -1,0 +1,20 @@
+[package]
+name = "ingestion"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+hex = "0.4"
+anyhow = "1"
+
+[lib]
+name = "ingestion"
+path = "src/lib.rs"
+
+[dev-dependencies]
+tempfile = "3"

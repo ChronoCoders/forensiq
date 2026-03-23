@@ -1,0 +1,8 @@
+[workspace]
+members = ["ingestion", "audit", "store"]
+resolver = "2"
+
+# Strip debug symbols from all third-party crates in dev builds to keep
+# libduckdb-sys (bundled C++) from filling the disk during first compile.
+[profile.dev.package."*"]
+debug = false

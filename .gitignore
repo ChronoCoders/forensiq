@@ -1,0 +1,33 @@
+# Rust build artifacts
+target/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local-only — never commit
+.claude/
+docs/sessions/
+
+# Secrets / credentials
+.env
+*.env.local
+
+# Binary / large assets
+forensiq_architecture.docx
