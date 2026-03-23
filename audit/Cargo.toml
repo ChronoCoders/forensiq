@@ -1,0 +1,18 @@
+[package]
+name = "audit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sqlx = { version = "0.7", features = ["sqlite", "runtime-tokio"] }
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+[lib]
+name = "audit"
+path = "src/lib.rs"
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,28 @@
+[project]
+name = "forensiq"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "spacy>=3.7",
+    "transformers>=4.40",
+    "torch>=2.0",
+    "networkx>=3.2",
+    "python-dateutil>=2.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "mypy>=1.8",
+    "types-python-dateutil",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+exclude = ["tests/"]

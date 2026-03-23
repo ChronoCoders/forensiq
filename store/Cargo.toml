@@ -1,0 +1,19 @@
+[package]
+name = "store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ingestion = { path = "../ingestion" }
+duckdb = { version = "1", features = ["bundled"] }
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+[lib]
+name = "store"
+path = "src/lib.rs"
+
+[dev-dependencies]
+tempfile = "3"
