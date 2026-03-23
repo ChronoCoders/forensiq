@@ -32,8 +32,8 @@ Forensiq is a pipeline of discrete, auditable stages. Each stage produces a sign
 | 1 | Ingestion pipeline — hashing, UUID, audit logging | ✅ Complete |
 | 2 | Evidence store — DuckDB append-only interface | ✅ Complete |
 | 3 | Analysis engine — NLP, timeline, graph, classification | ✅ Complete |
-| 4 | Contradiction detection — CrossEncoder NLI | 🔲 Pending |
-| 5 | Reasoning engine — Bayesian scoring | 🔲 Pending |
+| 4 | Contradiction detection — CrossEncoder NLI | ✅ Complete |
+| 5 | Reasoning engine — Bayesian scoring | ✅ Complete |
 | 6 | Report generator | 🔲 Pending |
 | 7 | Review interface | 🔲 Pending |
 | 8 | Hardening — security audit, bias testing, benchmarks | 🔲 Pending |
@@ -76,7 +76,7 @@ cargo test --workspace
 ```bash
 pip install spacy transformers torch networkx python-dateutil
 python -m pytest
-python -m mypy analysis/
+python -m mypy analysis/ contradiction/ reasoning/
 ```
 
 > First build of the `store` crate compiles DuckDB from source and takes several minutes.
