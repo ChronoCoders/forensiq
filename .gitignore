@@ -23,7 +23,7 @@ Thumbs.db
 
 # Local-only — never commit
 .claude/
-docs/sessions/
+docs/
 
 # Secrets / credentials
 .env
