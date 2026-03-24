@@ -30,10 +30,10 @@ pub struct EvidenceRecord<'a> {
 }
 
 /// Opens (or creates) the SQLite audit database at `path` and ensures the
-/// `audit_log` table exists.
+/// `audit_log` and `event_log` tables exist.
 ///
-/// The table is append-only by convention — no UPDATE or DELETE statements are
-/// ever issued against it.
+/// Both tables are append-only by convention — no UPDATE or DELETE statements
+/// are ever issued against them.
 ///
 /// # Errors
 /// Returns [`AuditError::Db`] if the connection or table creation fails.
@@ -55,7 +55,38 @@ pub async fn init_audit_log(path: &Path) -> Result<SqlitePool> {
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS event_log (
+            id          INTEGER PRIMARY KEY,
+            event_type  TEXT NOT NULL,
+            payload     TEXT NOT NULL,
+            occurred_at TEXT NOT NULL
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
     Ok(pool)
+}
+
+/// Appends one row to the event log for any named system event.
+///
+/// `event_type` is a short identifier (e.g. `"report_generated"`).
+/// `payload` is a JSON string carrying event-specific fields.
+///
+/// # Errors
+/// Returns [`AuditError::Db`] if the INSERT fails.
+pub async fn log_event(pool: &SqlitePool, event_type: &str, payload: &str) -> Result<()> {
+    let occurred_at = Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO event_log (event_type, payload, occurred_at) VALUES (?, ?, ?)",
+    )
+    .bind(event_type)
+    .bind(payload)
+    .bind(&occurred_at)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// Appends one row to the audit log for an evidence ingest event.
