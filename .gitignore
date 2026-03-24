@@ -22,7 +22,7 @@ venv/
 Thumbs.db
 
 # Local-only — never commit
-docs/sessions/
+docs/
 
 # Secrets / credentials
 .env
