@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Ingest</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.ingest-form {
+  max-width: 680px;
+}
+.form-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.form-section-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 16px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.form-row.full { grid-template-columns: 1fr; }
+.form-field label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text3);
+  display: block;
+  margin-bottom: 6px;
+}
+.form-input, .form-select, .form-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
+.form-input::placeholder, .form-textarea::placeholder { color: var(--text3); }
+.form-textarea { resize: vertical; min-height: 80px; }
+.form-select { cursor: pointer; }
+.drop-zone {
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg);
+}
+.drop-zone:hover { border-color: var(--accent); background: rgba(59,127,255,0.03); }
+.drop-zone.dragging { border-color: var(--accent); background: rgba(59,127,255,0.06); }
+.drop-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+  color: var(--text3);
+}
+.drop-text { font-size: 13px; color: var(--text2); margin-bottom: 4px; }
+.drop-sub { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+.file-queue { margin-top: 12px; }
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.file-name { flex:1; font-family: var(--mono); font-size:12px; color: var(--text); }
+.file-size { font-family: var(--mono); font-size:11px; color: var(--text3); }
+.file-remove { font-size:12px; color: var(--red); cursor:pointer; padding:2px 6px; }
+.ingest-result {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 22px;
+  display: none;
+}
+.ingest-result.visible { display: block; }
+.result-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.result-item:last-child { border-bottom: none; }
+.result-icon { font-size:16px; flex-shrink:0; margin-top:1px; }
+.result-label { font-size:12px; font-weight:500; color:var(--text); margin-bottom:3px; }
+.result-value { font-family:var(--mono); font-size:11px; color:var(--teal); word-break:break-all; }
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Ingest Evidence</div>
+    <div class="topbar-spacer"></div>
+  </div>
+  <div class="content">
+    <div class="ingest-form">
+
+      <div class="form-section">
+        <div class="form-section-title">Evidence File</div>
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <div class="drop-icon">⬆</div>
+          <div class="drop-text">Drop file here or click to browse</div>
+          <div class="drop-sub">PDF, TXT, CSV, MP4, ZIP, JPG, PNG · Max 2 GB</div>
+        </div>
+        <input type="file" id="file-input" style="display:none" multiple>
+        <div class="file-queue" id="file-queue"></div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">Metadata</div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Source</label>
+            <input class="form-input" type="text" placeholder="e.g. City Lab #4" id="source">
+          </div>
+          <div class="form-field">
+            <label>Evidence Type</label>
+            <select class="form-select" id="etype">
+              <option value="">Select type...</option>
+              <option>Witness Statement</option>
+              <option>Forensic Report</option>
+              <option>CCTV Footage</option>
+              <option>Phone Records</option>
+              <option>Physical Evidence Photo</option>
+              <option>Medical Report</option>
+              <option>Police Report</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Operator ID</label>
+            <input class="form-input" type="text" id="operator" placeholder="Operator ID">
+          </div>
+          <div class="form-field">
+            <label>Chain of Custody ID</label>
+            <input class="form-input" type="text" placeholder="e.g. COC-2024-0481-024" id="coc">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-field">
+            <label>Notes</label>
+            <textarea class="form-textarea" placeholder="Optional analyst notes..." id="notes"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">Integrity</div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Hash Algorithm</label>
+            <select class="form-select">
+              <option selected>SHA-256</option>
+              <option>SHA-512</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label>Verification</label>
+            <select class="form-select">
+              <option selected>Auto-compute on ingest</option>
+              <option>Manual hash entry</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" id="ingest-btn" onclick="doIngest()">Ingest Evidence</button>
+        <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+      </div>
+
+      <div class="ingest-result" id="ingest-result" style="margin-top:16px">
+        <div class="panel-title" style="margin-bottom:14px">Ingest Result</div>
+        <div class="result-item">
+          <div class="result-icon" style="color:var(--green)">✓</div>
+          <div><div class="result-label">UUID Assigned</div><div class="result-value" id="res-uuid"></div></div>
+        </div>
+        <div class="result-item">
+          <div class="result-icon" style="color:var(--teal)">⟳</div>
+          <div><div class="result-label">SHA-256 Hash</div><div class="result-value" id="res-hash"></div></div>
+        </div>
+        <div class="result-item">
+          <div class="result-icon" style="color:var(--accent)">⬤</div>
+          <div><div class="result-label">Audit Log Entry</div><div class="result-value" id="res-audit"></div></div>
+        </div>
+        <div class="result-item">
+          <div class="result-icon" style="color:var(--purple)">◎</div>
+          <div><div class="result-label">Analysis Queued</div><div class="result-value" id="res-analysis"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('ingest');
+const _u = getUser ? getUser() : null;
+if (_u) document.getElementById('operator').value = _u.username;
+
+const files = [];
+
+document.getElementById('file-input').addEventListener('change', e => {
+  Array.from(e.target.files).forEach(addFile);
+});
+
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragging'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragging'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragging');
+  Array.from(e.dataTransfer.files).forEach(addFile);
+});
+
+function addFile(f) {
+  files.push(f);
+  renderQueue();
+}
+
+function removeFile(i) {
+  files.splice(i, 1);
+  renderQueue();
+}
+
+function renderQueue() {
+  document.getElementById('file-queue').innerHTML = files.map((f, i) => `
+    <div class="file-item">
+      <div class="file-name">${f.name}</div>
+      <div class="file-size">${(f.size / 1024).toFixed(0)} KB</div>
+      <div class="file-remove" onclick="removeFile(${i})">✕</div>
+    </div>
+  `).join('');
+}
+
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function fakeHash() {
+  let h = '';
+  for (let i = 0; i < 64; i++) h += '0123456789abcdef'[Math.floor(Math.random() * 16)];
+  return h;
+}
+
+async function doIngest() {
+  if (files.length === 0) {
+    alert('Select at least one file to ingest.');
+    return;
+  }
+  const source = document.getElementById('source').value.trim() || 'unknown';
+  const btn = document.getElementById('ingest-btn');
+  btn.disabled = true;
+  btn.textContent = 'Ingesting...';
+
+  // Ingest files sequentially so result panel shows last file's details.
+  let lastResult = null;
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    fd.append('source', source);
+
+    try {
+      const res = await fetch(`${API_URL}/evidence/ingest`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || res.statusText);
+      }
+      lastResult = await res.json();
+    } catch (e) {
+      alert(`Ingest failed for ${file.name}: ${e.message}`);
+      btn.disabled = false;
+      btn.textContent = 'Ingest Evidence';
+      return;
+    }
+  }
+
+  if (lastResult) {
+    const ts = new Date(lastResult.ingested_at).toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+    document.getElementById('res-uuid').textContent = lastResult.uuid;
+    document.getElementById('res-hash').textContent = 'sha256:' + lastResult.sha256;
+    document.getElementById('res-audit').textContent = 'Entry written — ' + ts;
+    document.getElementById('res-analysis').textContent = 'NLP + entity extraction queued';
+    document.getElementById('ingest-result').classList.add('visible');
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Ingest Evidence';
+}
+
+function clearForm() {
+  files.length = 0;
+  renderQueue();
+  document.getElementById('source').value = '';
+  document.getElementById('notes').value = '';
+  document.getElementById('coc').value = '';
+  document.getElementById('ingest-result').classList.remove('visible');
+}
+</script>
+</body>
+</html>

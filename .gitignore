@@ -31,3 +31,7 @@ docs/
 
 # Binary / large assets
 forensiq_architecture.docx
+
+# Runtime data
+data/
+*.log

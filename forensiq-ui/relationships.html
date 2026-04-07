@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Relationships</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.graph-canvas {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  height: 520px;
+  position: relative;
+  overflow: hidden;
+}
+.graph-legend {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+.node-panel {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 14px;
+  display: none;
+}
+.node-panel.visible { display: block; }
+.node-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.node-panel-type {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+.node-panel-field { margin-bottom: 8px; }
+.node-panel-field label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text3);
+  display: block;
+  margin-bottom: 3px;
+}
+.node-panel-field span { font-size: 12px; color: var(--text2); }
+.edge-table { width: 100%; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Relationships</div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost" onclick="exportGraph()">Export Graph</button>
+  </div>
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Nodes</div>
+        <div class="stat-value" id="rel-nodes">—</div>
+        <div class="stat-delta">NetworkX graph</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Edges</div>
+        <div class="stat-value" id="rel-edges">—</div>
+        <div class="stat-delta">Relationships</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Conflict Edges</div>
+        <div class="stat-value" id="rel-conflicts" style="color:var(--red)">—</div>
+        <div class="stat-delta danger">Disputed links</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Central Node</div>
+        <div class="stat-value" id="rel-central" style="font-size:16px">—</div>
+        <div class="stat-delta" id="rel-central-deg">—</div>
+      </div>
+    </div>
+
+    <div class="graph-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(59,127,255,0.6)"></div>Subject</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(168,85,247,0.6)"></div>Witness</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(20,184,166,0.6)"></div>Location</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(245,158,11,0.6)"></div>Evidence</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(34,197,94,0.6)"></div>Person</div>
+      <div style="display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--text3)">
+        <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="rgba(239,68,68,0.5)" stroke-width="1.5" stroke-dasharray="4,3"/></svg>
+        Conflict edge
+      </div>
+    </div>
+
+    <div class="graph-canvas" id="graph-canvas">
+      <svg id="graph-svg" width="100%" height="100%" style="position:absolute;top:0;left:0"></svg>
+      <div id="graph-empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;color:var(--text3)">No relationship data — ingest evidence to build graph.</div>
+      <div class="node-panel" id="node-panel">
+        <div class="node-panel-title" id="np-title"></div>
+        <div class="node-panel-type" id="np-type"></div>
+        <div class="node-panel-field"><label>Evidence Sources</label><span id="np-sources"></span></div>
+        <div class="node-panel-field"><label>Connections</label><span id="np-conn"></span></div>
+        <div class="node-panel-field"><label>Notes</label><span id="np-notes"></span></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-header"><div class="panel-title">Edge List</div></div>
+      <table class="data-table edge-table">
+        <thead><tr><th>From</th><th>To</th><th>Relationship</th><th>Source</th><th>Status</th></tr></thead>
+        <tbody id="edge-table"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('relationships');
+
+let nodes = [];
+let edges = [];
+let nodeMap = {};
+
+async function loadGraph() {
+  try {
+    const res = await fetch(`${API_URL}/graph`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+    nodes = data.nodes || [];
+    edges = data.edges || [];
+    nodeMap = {};
+    nodes.forEach(n => nodeMap[n.id] = n);
+    updateStats();
+    draw();
+    renderEdgeTable();
+  } catch (e) {
+    document.getElementById('graph-empty').textContent = `Failed to load graph: ${e.message}`;
+    document.getElementById('graph-empty').style.display = 'flex';
+  }
+}
+
+function updateStats() {
+  document.getElementById('rel-nodes').textContent     = nodes.length || '—';
+  document.getElementById('rel-edges').textContent     = edges.length || '—';
+  document.getElementById('rel-conflicts').textContent = edges.filter(e => e.status === 'conflict').length || '—';
+  const degrees = {};
+  edges.forEach(e => {
+    degrees[e.from] = (degrees[e.from] || 0) + 1;
+    degrees[e.to]   = (degrees[e.to]   || 0) + 1;
+  });
+  const central = Object.entries(degrees).sort((a, b) => b[1] - a[1])[0];
+  document.getElementById('rel-central').textContent     = central ? nodeMap[central[0]]?.label || central[0] : '—';
+  document.getElementById('rel-central-deg').textContent = central ? `Degree: ${central[1]}` : '—';
+}
+
+function draw() {
+  const svg = document.getElementById('graph-svg');
+  const W = svg.clientWidth || 800;
+  const H = svg.clientHeight || 520;
+
+  const pos = {};
+  nodes.forEach(n => { pos[n.id] = { x: n.x * W, y: n.y * H }; });
+
+  let html = '<defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(255,255,255,0.2)"/></marker><marker id="arr-red" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="rgba(239,68,68,0.5)"/></marker></defs>';
+
+  edges.forEach(e => {
+    const a = pos[e.from], b = pos[e.to];
+    const conflict = e.status === 'conflict';
+    html += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"
+      stroke="${conflict ? 'rgba(239,68,68,0.45)' : 'rgba(255,255,255,0.12)'}"
+      stroke-width="${conflict ? 1.5 : 1}"
+      stroke-dasharray="${conflict ? '5,4' : 'none'}"
+      marker-end="url(#${conflict ? 'arr-red' : 'arr'})"/>`;
+  });
+
+  nodes.forEach(n => {
+    const p = pos[n.id];
+    const r = n.type === 'Subject' ? 26 : n.type === 'Evidence' ? 20 : 18;
+    html += `<g onclick="showPanel('${n.id}')" style="cursor:pointer">
+      <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${n.color},0.12)" stroke="${n.color},0.5)" stroke-width="1.5"/>
+      <text x="${p.x}" y="${p.y - 4}" text-anchor="middle" fill="${n.color},0.9)" font-family="JetBrains Mono,monospace" font-size="8" font-weight="600">${n.type.toUpperCase()}</text>
+      <text x="${p.x}" y="${p.y + 7}" text-anchor="middle" fill="${n.color},0.9)" font-family="JetBrains Mono,monospace" font-size="${n.type === 'Subject' ? 9 : 8}">${n.label}</text>
+    </g>`;
+  });
+
+  svg.innerHTML = html;
+  document.getElementById('graph-empty').style.display = nodes.length ? 'none' : 'flex';
+}
+
+function showPanel(id) {
+  const n = nodeMap[id];
+  const p = document.getElementById('node-panel');
+  document.getElementById('np-title').textContent = n.label;
+  document.getElementById('np-type').textContent = n.type;
+  document.getElementById('np-sources').textContent = n.sources;
+  document.getElementById('np-conn').textContent = n.conn;
+  document.getElementById('np-notes').textContent = n.notes;
+  p.classList.add('visible');
+}
+
+function renderEdgeTable() {
+  document.getElementById('edge-table').innerHTML = edges.length
+    ? edges.map(e => `
+        <tr>
+          <td class="mono text-accent">${nodeMap[e.from]?.label || e.from}</td>
+          <td class="mono text-accent">${nodeMap[e.to]?.label   || e.to}</td>
+          <td style="color:var(--text)">${e.type}</td>
+          <td class="mono text-muted" style="font-size:11px">${e.source}</td>
+          <td><span class="tag ${e.status === 'conflict' ? 'tag-conflict' : 'tag-clean'}">${e.status}</span></td>
+        </tr>
+      `).join('')
+    : '<tr><td colspan="5" style="padding:24px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">No relationship data yet.</td></tr>';
+}
+
+window.addEventListener('resize', draw);
+loadGraph();
+
+function exportGraph() {
+  if (!nodes.length && !edges.length) { alert('No graph data to export.'); return; }
+  const blob = new Blob([JSON.stringify({ nodes, edges }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'relationship-graph.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Active Cases</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.case-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+.case-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  text-decoration: none;
+  display: block;
+}
+.case-card:hover { border-color: var(--border2); }
+.case-card.current { border-color: rgba(59,127,255,0.4); }
+.case-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:10px; }
+.case-id { font-family:var(--mono); font-size:11px; color:var(--accent); margin-bottom:4px; }
+.case-title { font-size:15px; font-weight:600; color:var(--text); }
+.case-meta { font-family:var(--mono); font-size:11px; color:var(--text3); margin-bottom:12px; }
+.case-stats { display:flex; gap:16px; margin-bottom:12px; }
+.case-stat label { font-family:var(--mono); font-size:9px; letter-spacing:1px; text-transform:uppercase; color:var(--text3); display:block; margin-bottom:3px; }
+.case-stat span { font-family:var(--mono); font-size:13px; font-weight:600; color:var(--text); }
+.case-bar { height:3px; background:var(--surface2); border-radius:2px; overflow:hidden; margin-bottom:10px; }
+.case-bar-fill { height:100%; border-radius:2px; background:var(--accent); }
+.case-analyst { font-family:var(--mono); font-size:10px; color:var(--text3); }
+</style>
+</head>
+<body>
+
+<!-- New Case Modal -->
+<div id="new-case-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:28px;width:460px;max-width:90vw">
+    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:20px">Create New Case</div>
+    <div style="margin-bottom:14px">
+      <label style="font-family:var(--mono);font-size:10px;letter-spacing:0.8px;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:6px">Case Title *</label>
+      <input id="nc-title" type="text" placeholder="e.g. People v. Doe" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:20px">
+      <label style="font-family:var(--mono);font-size:10px;letter-spacing:0.8px;text-transform:uppercase;color:var(--text3);display:block;margin-bottom:6px">Charge / Category</label>
+      <input id="nc-charge" type="text" placeholder="e.g. Homicide, Fraud…" style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none;box-sizing:border-box">
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeNewCase()">Cancel</button>
+      <button class="btn btn-primary" id="nc-submit" onclick="submitNewCase()">Create Case</button>
+    </div>
+    <div id="nc-status" style="font-family:var(--mono);font-size:11px;margin-top:10px;color:var(--text3)"></div>
+  </div>
+</div>
+
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title"><strong>Active Cases</strong></div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-primary" onclick="newCase()">+ New Case</button>
+  </div>
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Active Cases</div>
+        <div class="stat-value" id="hdr-active">—</div>
+        <div class="stat-delta">This analyst</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Open Contradictions</div>
+        <div class="stat-value" id="hdr-contradictions" style="color:var(--red)">—</div>
+        <div class="stat-delta danger" id="hdr-co-case">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Evidence Items</div>
+        <div class="stat-value" id="hdr-evidence">—</div>
+        <div class="stat-delta" id="hdr-ev-case">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Reliability</div>
+        <div class="stat-value" id="hdr-reliability">—</div>
+        <div class="stat-delta" id="hdr-rel-case">—</div>
+      </div>
+    </div>
+
+    <div class="case-grid" id="case-grid">
+      <div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--text3)">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('cases-active');
+
+let primaryStats = { evCount: 0, coCount: 0, avgRel: '—', auCount: 0, pct: 0 };
+
+async function loadCaseStats() {
+  try {
+    const h = { Authorization: `Bearer ${getToken()}` };
+    const [evRes, coRes, scRes, auRes] = await Promise.all([
+      fetch(`${API_URL}/evidence`,       { headers: h }),
+      fetch(`${API_URL}/contradictions`, { headers: h }),
+      fetch(`${API_URL}/scores`,          { headers: h }),
+      fetch(`${API_URL}/audit`,           { headers: h }),
+    ]);
+    const evidence       = evRes.ok ? await evRes.json() : [];
+    const contradictions = coRes.ok ? await coRes.json() : [];
+    const scores         = scRes.ok ? await scRes.json() : [];
+    const audit          = auRes.ok ? await auRes.json() : { ingest_events: [], system_events: [] };
+
+    primaryStats.evCount = evidence.length;
+    primaryStats.coCount = contradictions.length;
+    primaryStats.auCount = (audit.ingest_events?.length ?? 0) + (audit.system_events?.length ?? 0);
+    primaryStats.avgRel  = scores.length
+      ? (scores.reduce((s, x) => s + x.score, 0) / scores.length).toFixed(2) : '—';
+    primaryStats.pct     = scores.length ? Math.round(parseFloat(primaryStats.avgRel) * 100) : 0;
+
+    document.getElementById('hdr-contradictions').textContent = primaryStats.coCount;
+    document.getElementById('hdr-evidence').textContent       = primaryStats.evCount;
+    document.getElementById('hdr-reliability').textContent    = primaryStats.avgRel;
+    document.getElementById('hdr-co-case').textContent  = 'Current case';
+    document.getElementById('hdr-ev-case').textContent  = 'Current case';
+    document.getElementById('hdr-rel-case').textContent = 'Current case';
+  } catch (e) {
+    console.error('Case stats load failed:', e);
+  }
+}
+
+async function loadActiveCases() {
+  try {
+    const res = await fetch(`${API_URL}/cases?status=active`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const cases = await res.json();
+
+    document.getElementById('hdr-active').textContent = cases.length || '—';
+
+    const u = getUser ? getUser() : null;
+    const grid = document.getElementById('case-grid');
+
+    if (!cases.length) {
+      grid.innerHTML = '<div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--text3)">No active cases.</div>';
+      return;
+    }
+
+    grid.innerHTML = cases.map(c => {
+      const isPrimary = c.id === '2024-0481';
+      const evCount   = isPrimary ? primaryStats.evCount   : '—';
+      const avgRel    = isPrimary ? primaryStats.avgRel    : '—';
+      const auCount   = isPrimary ? primaryStats.auCount   : '—';
+      const coCount   = isPrimary ? primaryStats.coCount   : '—';
+      const pct       = isPrimary ? primaryStats.pct       : 0;
+      const analyst   = isPrimary ? (u?.username || c.analyst) : c.analyst;
+      const opened    = c.opened_at ? c.opened_at.substring(0, 10) : '—';
+      return `
+        <a href="index.html" class="case-card ${isPrimary ? 'current' : ''}">
+          <div class="case-header">
+            <div>
+              <div class="case-id">#${c.id}</div>
+              <div class="case-title">${c.title}</div>
+            </div>
+            <span class="tag tag-conflict">${coCount} conflicts</span>
+          </div>
+          <div class="case-meta">Opened ${opened} · ${c.charge || 'No charge listed'}</div>
+          <div class="case-stats">
+            <div class="case-stat"><label>Evidence</label><span>${evCount}</span></div>
+            <div class="case-stat"><label>Reliability</label><span>${avgRel}</span></div>
+            <div class="case-stat"><label>Audit Entries</label><span>${auCount}</span></div>
+          </div>
+          <div class="case-bar"><div class="case-bar-fill" style="width:${pct}%"></div></div>
+          <div class="case-analyst">${analyst} · Analysis in progress</div>
+        </a>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('case-grid').innerHTML =
+      `<div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--red)">Failed to load: ${e.message}</div>`;
+  }
+}
+
+async function load() {
+  await loadCaseStats();
+  await loadActiveCases();
+}
+
+load();
+
+// ── New Case Modal ─────────────────────────────────────────────────────────────
+
+function newCase() {
+  document.getElementById('nc-title').value  = '';
+  document.getElementById('nc-charge').value = '';
+  document.getElementById('nc-status').textContent = '';
+  document.getElementById('new-case-overlay').style.display = 'flex';
+  document.getElementById('nc-title').focus();
+}
+
+function closeNewCase() {
+  document.getElementById('new-case-overlay').style.display = 'none';
+}
+
+async function submitNewCase() {
+  const title  = document.getElementById('nc-title').value.trim();
+  const charge = document.getElementById('nc-charge').value.trim();
+  const status = document.getElementById('nc-status');
+
+  if (!title) {
+    status.textContent = 'Title is required.';
+    status.style.color = 'var(--red)';
+    return;
+  }
+
+  const btn = document.getElementById('nc-submit');
+  btn.disabled = true;
+  btn.textContent = 'Creating...';
+  status.textContent = '';
+
+  try {
+    const res = await fetch(`${API_URL}/cases`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, charge: charge || undefined }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || res.statusText);
+    }
+    closeNewCase();
+    await load();
+  } catch (e) {
+    status.textContent = 'Failed: ' + e.message;
+    status.style.color = 'var(--red)';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Case';
+  }
+}
+
+document.getElementById('new-case-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeNewCase();
+});
+</script>
+</body>
+</html>

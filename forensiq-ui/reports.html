@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Reports</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.report-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.report-card:hover { border-color: var(--border2); }
+.report-icon {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.report-meta { flex:1; }
+.report-name { font-size:14px; font-weight:600; color:var(--text); margin-bottom:4px; }
+.report-detail { font-family:var(--mono); font-size:11px; color:var(--text3); margin-bottom:8px; }
+.report-summary { font-size:12px; color:var(--text2); line-height:1.5; }
+.report-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; flex-shrink:0; }
+.generate-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 22px;
+  margin-bottom: 20px;
+}
+.report-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.report-type-card {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.report-type-card:hover, .report-type-card.selected {
+  border-color: var(--accent);
+  background: rgba(59,127,255,0.05);
+}
+.rt-icon { font-size:20px; margin-bottom:8px; }
+.rt-name { font-size:12px; font-weight:600; color:var(--text); margin-bottom:3px; }
+.rt-desc { font-size:11px; color:var(--text3); }
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Reports</div>
+    <div class="topbar-spacer"></div>
+  </div>
+  <div class="content">
+
+    <div class="generate-panel">
+      <div class="panel-title" style="margin-bottom:14px">Generate New Report</div>
+      <div class="report-type-grid">
+        <div class="report-type-card selected" onclick="selectType(this)">
+          <div class="rt-icon">📋</div>
+          <div class="rt-name">Full Analysis</div>
+          <div class="rt-desc">All evidence, contradictions, timeline, graph</div>
+        </div>
+        <div class="report-type-card" onclick="selectType(this)">
+          <div class="rt-icon">⚡</div>
+          <div class="rt-name">Contradiction Summary</div>
+          <div class="rt-desc">Flagged conflicts only with source references</div>
+        </div>
+        <div class="report-type-card" onclick="selectType(this)">
+          <div class="rt-icon">🕐</div>
+          <div class="rt-name">Timeline Report</div>
+          <div class="rt-desc">Reconstructed events with confidence levels</div>
+        </div>
+        <div class="report-type-card" onclick="selectType(this)">
+          <div class="rt-icon">🔗</div>
+          <div class="rt-name">Relationship Map</div>
+          <div class="rt-desc">Entity graph with edge annotations</div>
+        </div>
+        <div class="report-type-card" onclick="selectType(this)">
+          <div class="rt-icon">🔒</div>
+          <div class="rt-name">Audit Report</div>
+          <div class="rt-desc">Chain of custody and integrity verification</div>
+        </div>
+        <div class="report-type-card" onclick="selectType(this)">
+          <div class="rt-icon">📌</div>
+          <div class="rt-name">Priority Brief</div>
+          <div class="rt-desc">Top 5 evidence items for analyst review</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" onclick="doGenerate()">Generate Report</button>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)" id="gen-status"></span>
+      </div>
+    </div>
+
+    <div class="panel-title" style="margin-bottom:14px;font-family:var(--mono);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2)">Generated Reports</div>
+    <div id="reports-list"><div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--text3)">Loading...</div></div>
+
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('reports');
+
+function selectType(el) {
+  document.querySelectorAll('.report-type-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function renderReports(reports) {
+  const el = document.getElementById('reports-list');
+  if (!reports.length) {
+    el.innerHTML = '<div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--text3)">No reports generated yet.</div>';
+    return;
+  }
+  el.innerHTML = reports.map(r => {
+    const ts = (r.generated_at || '').replace('T', ' ').substring(0, 16) + ' UTC';
+    const hash = r.report_sha256 ? r.report_sha256.substring(0, 8) + '…' : '—';
+    return `<div class="report-card">
+      <div class="report-icon" style="background:rgba(59,127,255,0.1);border:1px solid rgba(59,127,255,0.2)">📋</div>
+      <div class="report-meta">
+        <div class="report-name">Analysis Report — ${r.case_id || '#2024-0481'}</div>
+        <div class="report-detail">Generated ${ts} · ${r.generated_by || '—'} · ${(r.ranked_evidence || []).length} evidence items · ${(r.contradictions || []).length} contradictions</div>
+        <div class="report-summary">${r.summary || 'Tamper-evident report generated by Forensiq pipeline.'}</div>
+      </div>
+      <div class="report-actions">
+        <button class="btn btn-ghost" style="font-size:10px" onclick="verifyReport('${r.report_id}')">Verify</button>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">sha256: ${hash}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function verifyReport(id) {
+  try {
+    const res = await fetch(`${API_URL}/reports/${id}/verify`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    const data = await res.json();
+    alert(data.valid ? `✓ Integrity verified\n${data.report_sha256}` : `✗ Integrity check FAILED`);
+  } catch (e) { alert('Verify failed: ' + e.message); }
+}
+
+async function loadReports() {
+  try {
+    const res = await fetch(`${API_URL}/reports`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    renderReports(await res.json());
+  } catch (e) {
+    document.getElementById('reports-list').innerHTML =
+      `<div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--red)">Failed to load: ${e.message}</div>`;
+  }
+}
+
+async function doGenerate() {
+  const s = document.getElementById('gen-status');
+  s.textContent = 'Fetching data...';
+  s.style.color = 'var(--amber)';
+  try {
+    const h = { Authorization: `Bearer ${getToken()}` };
+    const [evRes, coRes, scRes] = await Promise.all([
+      fetch(`${API_URL}/evidence`,      { headers: h }),
+      fetch(`${API_URL}/contradictions`,{ headers: h }),
+      fetch(`${API_URL}/scores`,         { headers: h }),
+    ]);
+    const evidence      = evRes.ok ? await evRes.json() : [];
+    const contradictions= coRes.ok ? await coRes.json() : [];
+    const scores        = scRes.ok ? await scRes.json() : [];
+
+    const evMap = {};
+    evidence.forEach(e => evMap[e.uuid] = e);
+    const rankedEvidence = scores.map(s => ({
+      uuid: s.uuid,
+      filename: evMap[s.uuid]?.filename || s.uuid,
+      rank: s.rank,
+      score: s.score,
+      explanation: s.explanation,
+    }));
+    const contrs = contradictions.map(c => ({
+      evidence_uuid_a: c.evidence_uuid_a,
+      evidence_uuid_b: c.evidence_uuid_b,
+      label: c.label,
+      confidence: c.confidence,
+      context: c.context,
+      explanation: c.explanation,
+    }));
+
+    s.textContent = 'Generating...';
+    const res = await fetch(`${API_URL}/reports/generate`, {
+      method: 'POST',
+      headers: { ...h, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ case_id: '2024-0481', ranked_evidence: rankedEvidence, contradictions: contrs }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    s.textContent = 'Report generated';
+    s.style.color = 'var(--green)';
+    loadReports();
+  } catch (e) {
+    s.textContent = 'Failed: ' + e.message;
+    s.style.color = 'var(--red)';
+  }
+}
+
+loadReports();
+</script>
+</body>
+</html>
