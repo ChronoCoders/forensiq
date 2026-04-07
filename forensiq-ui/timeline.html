@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Timeline</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.timeline-container { max-width: 800px; padding: 8px 0; }
+.timeline-entry {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0;
+  position: relative;
+}
+.timeline-spine {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 40px;
+  flex-shrink: 0;
+}
+.t-node {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: var(--surface);
+  flex-shrink: 0;
+  margin-top: 4px;
+  z-index: 1;
+}
+.t-node.confirmed { border-color: var(--green); background: rgba(34,197,94,0.15); }
+.t-node.conflict { border-color: var(--red); background: rgba(239,68,68,0.15); }
+.t-node.uncertain { border-color: var(--amber); background: rgba(245,158,11,0.1); }
+.t-node.unverified { border-color: var(--text3); }
+.t-line {
+  width: 1px;
+  flex: 1;
+  background: var(--border2);
+  min-height: 20px;
+}
+.t-content {
+  flex: 1;
+  padding: 0 0 24px 12px;
+}
+.t-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+.t-event {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.t-desc {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.t-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.t-source {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(59,127,255,0.08);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(59,127,255,0.15);
+}
+.t-conflict-ref {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--red);
+  background: rgba(239,68,68,0.08);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(239,68,68,0.2);
+}
+.t-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.t-status-badge.confirmed { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+.t-status-badge.conflict { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+.t-status-badge.uncertain { background: rgba(245,158,11,0.1); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+.t-status-badge.unverified { background: var(--surface2); color: var(--text3); border: 1px solid var(--border2); }
+.legend {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+}
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Timeline</div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost" onclick="exportTimeline()">Export Timeline</button>
+  </div>
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Events</div>
+        <div class="stat-value">—</div>
+        <div class="stat-delta">Reconstructed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Confirmed</div>
+        <div class="stat-value text-green">—</div>
+        <div class="stat-delta">Multi-source</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Conflicts</div>
+        <div class="stat-value" style="color:var(--red)">—</div>
+        <div class="stat-delta danger">Source disputes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Uncertain</div>
+        <div class="stat-value" style="color:var(--amber)">—</div>
+        <div class="stat-delta">Single source</div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="border-color:var(--green);background:rgba(34,197,94,0.15)"></div>Confirmed</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:var(--red);background:rgba(239,68,68,0.15)"></div>Conflict</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:var(--amber);background:rgba(245,158,11,0.1)"></div>Uncertain</div>
+      <div class="legend-item"><div class="legend-dot" style="border-color:var(--text3)"></div>Unverified</div>
+    </div>
+
+    <div class="timeline-container" id="timeline"></div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('timeline');
+
+let timelineEvents = [];
+
+function renderTimeline(events) {
+  const total     = events.length;
+  const parsed    = events.filter(e => e.timestamp).length;
+  const unparsed  = total - parsed;
+  const statEls   = document.querySelectorAll('.stat-value');
+  if (statEls[0]) statEls[0].textContent = total;
+  if (statEls[1]) statEls[1].textContent = parsed;
+  if (statEls[2]) statEls[2].textContent = unparsed;
+  if (statEls[3]) statEls[3].textContent = events.filter(e => e.confidence < 0.7).length;
+
+  if (!total) {
+    document.getElementById('timeline').innerHTML =
+      '<div style="padding:40px 24px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--text3)">No timeline events yet. Ingest evidence to run analysis.</div>';
+    return;
+  }
+
+  document.getElementById('timeline').innerHTML = events.map((e, i) => {
+    const status = e.timestamp ? (e.confidence >= 0.85 ? 'confirmed' : 'uncertain') : 'unverified';
+    const ts = e.timestamp
+      ? e.timestamp.replace('T', ' ').substring(0, 16) + ' UTC'
+      : e.timestamp_text || '—';
+    const entities = (e.entities_involved || []).map(s => `<span class="t-source">${s}</span>`).join('');
+    return `
+  <div class="timeline-entry">
+    <div class="timeline-spine">
+      <div class="t-node ${status}"></div>
+      ${i < events.length - 1 ? '<div class="t-line"></div>' : ''}
+    </div>
+    <div class="t-content">
+      <div class="t-time">${ts}</div>
+      <div class="t-event">${e.timestamp_text || 'Temporal event'}</div>
+      <div class="t-desc">${e.sentence}</div>
+      <div class="t-sources">${entities}</div>
+      <span class="t-status-badge ${status}">${status}</span>
+    </div>
+  </div>`;
+  }).join('');
+}
+
+async function loadTimeline() {
+  try {
+    const res = await fetch(`${API_URL}/analysis`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const analyses = await res.json();
+
+    // Flatten all timeline arrays, sort by timestamp (nulls last)
+    const all = [];
+    analyses.forEach(a => { if (Array.isArray(a.timeline)) all.push(...a.timeline); });
+    all.sort((a, b) => {
+      if (!a.timestamp && !b.timestamp) return 0;
+      if (!a.timestamp) return 1;
+      if (!b.timestamp) return -1;
+      return new Date(a.timestamp) - new Date(b.timestamp);
+    });
+
+    timelineEvents = all;
+    renderTimeline(all);
+  } catch (e) {
+    document.getElementById('timeline').innerHTML =
+      `<div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--red)">Failed to load: ${e.message}</div>`;
+  }
+}
+
+loadTimeline();
+
+function exportTimeline() {
+  if (!timelineEvents.length) { alert('No timeline events to export.'); return; }
+  const headers = ['timestamp', 'timestamp_text', 'sentence', 'confidence', 'entities_involved'];
+  const escape  = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines   = [headers.map(escape).join(','),
+    ...timelineEvents.map(e => [
+      escape(e.timestamp),
+      escape(e.timestamp_text),
+      escape(e.sentence),
+      escape(e.confidence),
+      escape((e.entities_involved || []).join('; ')),
+    ].join(','))];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'timeline.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+</body>
+</html>

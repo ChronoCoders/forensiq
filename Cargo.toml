@@ -1,5 +1,5 @@
 [workspace]
-members = ["ingestion", "audit", "store", "report"]
+members = ["ingestion", "audit", "store", "report", "api"]
 resolver = "2"
 
 # Strip debug symbols from all third-party crates in dev builds to keep

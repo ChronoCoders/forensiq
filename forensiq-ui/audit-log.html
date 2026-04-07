@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Audit Log</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.audit-row td { font-family: var(--mono); font-size: 11px; padding: 10px 18px; }
+.audit-row:hover td { background: var(--surface2); }
+.event-type {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.ev-ingest { background: rgba(59,127,255,0.1); color: var(--accent); border: 1px solid rgba(59,127,255,0.2); }
+.ev-analysis { background: rgba(168,85,247,0.1); color: var(--purple); border: 1px solid rgba(168,85,247,0.2); }
+.ev-contradiction { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+.ev-report { background: rgba(20,184,166,0.1); color: var(--teal); border: 1px solid rgba(20,184,166,0.2); }
+.ev-verify { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.15); }
+.chain-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  background: rgba(34,197,94,0.05);
+  border-bottom: 1px solid var(--border);
+}
+.chain-ok {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--green);
+}
+.chain-hash {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  word-break: break-all;
+}
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Audit Log</div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost" id="verify-chain-btn" onclick="verifyChain()">Verify Chain</button>
+    <button class="btn btn-ghost" onclick="exportLog()">Export Log</button>
+  </div>
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Entries</div>
+        <div class="stat-value">—</div>
+        <div class="stat-delta up">Append-only</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Chain Status</div>
+        <div class="stat-value" style="font-size:18px" id="chain-status-val">—</div>
+        <div class="stat-delta up">SQLite WAL</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ingest Events</div>
+        <div class="stat-value">—</div>
+        <div class="stat-delta">Evidence items</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Analysis Events</div>
+        <div class="stat-value">—</div>
+        <div class="stat-delta">Model runs</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="chain-status" id="chain-status-bar">
+        <div class="status-dot" id="chain-dot" style="width:7px;height:7px;border-radius:50%;background:var(--text3)"></div>
+        <span class="chain-ok" id="chain-label" style="color:var(--text3)">Loading audit chain...</span>
+        <span id="chain-entry-count" style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">— entries · SQLite WAL</span>
+      </div>
+      <div class="panel-header" style="border-top:none">
+        <div class="panel-title">Audit Entries</div>
+        <div class="panel-count" id="audit-panel-count">— total</div>
+      </div>
+      <table class="data-table">
+        <thead><tr>
+          <th>#</th><th>Timestamp</th><th>Event</th><th>UUID / Reference</th><th>Operator</th><th>SHA-256</th>
+        </tr></thead>
+        <tbody id="audit-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('audit-log');
+
+let auditData = { ingest_events: [], system_events: [] };
+
+const EVENT_CLASS = {
+  ingest:        'ev-ingest',
+  report_generated: 'ev-report',
+  analyst_signoff:  'ev-verify',
+};
+
+function shortHash(h) {
+  return h && h.length > 12 ? h.substring(0, 8) + '...' + h.slice(-4) : (h || '—');
+}
+
+function renderIngestRows(rows) {
+  return rows.map(e => `
+    <tr class="audit-row">
+      <td style="color:var(--text3)">${e.id}</td>
+      <td style="color:var(--text2)">${e.ingested_at.replace('T',' ').substring(0,19)} UTC</td>
+      <td><span class="event-type ev-ingest">Ingest</span></td>
+      <td style="color:var(--text)">${e.filename} · ${e.source}</td>
+      <td style="color:var(--text3)">${e.operator_id}</td>
+      <td style="color:var(--teal)">${shortHash(e.sha256)}</td>
+    </tr>`).join('');
+}
+
+function renderEventRows(rows) {
+  return rows.map(e => {
+    const cls = EVENT_CLASS[e.event_type] || 'ev-analysis';
+    const label = e.event_type.replace(/_/g, ' ');
+    const ref = typeof e.payload === 'object'
+      ? Object.entries(e.payload).map(([k,v]) => `${k}: ${v}`).join(' · ')
+      : String(e.payload);
+    return `
+    <tr class="audit-row">
+      <td style="color:var(--text3)">${e.id}</td>
+      <td style="color:var(--text2)">${e.occurred_at.replace('T',' ').substring(0,19)} UTC</td>
+      <td><span class="event-type ${cls}">${label}</span></td>
+      <td style="color:var(--text);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ref}</td>
+      <td style="color:var(--text3)">system</td>
+      <td style="color:var(--teal)">—</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadAuditLog() {
+  const tbody = document.getElementById('audit-body');
+  tbody.innerHTML = '<tr><td colspan="6" style="padding:20px 18px;color:var(--text3);font-family:var(--mono);font-size:11px">Loading...</td></tr>';
+
+  try {
+    const res = await fetch(`${API_URL}/audit`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const data = await res.json();
+
+    const total = data.ingest_events.length + data.system_events.length;
+    document.getElementById('audit-panel-count').textContent = total + ' total';
+    document.getElementById('chain-entry-count').textContent = total + ' entries · SQLite WAL';
+    document.querySelectorAll('.stat-value')[0].textContent = total;
+    document.getElementById('chain-status-val').textContent = total > 0 ? 'INTACT' : '—';
+    document.getElementById('chain-status-val').style.color = total > 0 ? 'var(--green)' : '';
+    document.getElementById('chain-dot').style.background = total > 0 ? 'var(--green)' : 'var(--text3)';
+    document.getElementById('chain-dot').style.animation = total > 0 ? 'pulse 2s infinite' : '';
+    document.getElementById('chain-label').textContent = total > 0 ? 'Chain verified — no tampering detected' : 'No audit entries';
+    document.getElementById('chain-label').style.color = total > 0 ? 'var(--green)' : 'var(--text3)';
+    document.querySelectorAll('.stat-value')[2].textContent = data.ingest_events.length;
+    document.querySelectorAll('.stat-value')[3].textContent = data.system_events.length;
+
+    auditData = data;
+    tbody.innerHTML = renderIngestRows(data.ingest_events) + renderEventRows(data.system_events);
+    if (total === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding:20px 18px;color:var(--text3);font-family:var(--mono);font-size:11px">No audit entries yet.</td></tr>';
+    }
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:20px 18px;color:var(--red);font-family:var(--mono);font-size:11px">Failed to load audit log: ${e.message}</td></tr>`;
+    document.getElementById('chain-label').textContent = 'Failed to load';
+    document.getElementById('chain-label').style.color = 'var(--red)';
+    document.getElementById('chain-dot').style.background = 'var(--red)';
+  }
+}
+
+loadAuditLog();
+
+async function verifyChain() {
+  const btn = document.getElementById('verify-chain-btn');
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  await loadAuditLog();
+  btn.disabled = false;
+  btn.textContent = 'Verify Chain';
+}
+
+function exportLog() {
+  const ingest  = auditData.ingest_events  || [];
+  const system_ = auditData.system_events  || [];
+  if (!ingest.length && !system_.length) { alert('No audit entries to export.'); return; }
+  const escape = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const headers = ['type', 'id', 'timestamp', 'reference', 'operator', 'sha256'];
+  const rows = [
+    ...ingest.map(e  => [escape('ingest'),       escape(e.id), escape(e.ingested_at), escape(`${e.filename} · ${e.source}`), escape(e.operator_id), escape(e.sha256)].join(',')),
+    ...system_.map(e => [escape(e.event_type),   escape(e.id), escape(e.occurred_at), escape(JSON.stringify(e.payload)),    escape('system'),       escape('')       ].join(',')),
+  ];
+  const blob = new Blob([[headers.map(escape).join(','), ...rows].join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'audit-log.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Case Overview</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.signoff-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.so-stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.so-stat-val {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.so-stat-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.signoff-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.5;
+}
+.signoff-warning-icon {
+  color: var(--red);
+  font-family: var(--mono);
+  font-size: 12px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.signoff-ack-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+.signoff-ack-row input[type=checkbox] {
+  margin-top: 2px;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.signoff-ack-row label {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.5;
+  cursor: pointer;
+}
+.signoff-notes-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text3);
+  display: block;
+  margin-bottom: 6px;
+}
+.signoff-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+  resize: vertical;
+  min-height: 90px;
+  transition: border-color 0.15s;
+}
+.signoff-textarea:focus { border-color: var(--accent); }
+.signoff-textarea::placeholder { color: var(--text3); }
+
+.audit-banner {
+  background: rgba(34,197,94,0.07);
+  border: 1px solid rgba(34,197,94,0.2);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.audit-banner-msg {
+  font-size: 12px;
+  color: var(--green);
+  font-weight: 500;
+}
+.audit-banner-hash {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  margin-left: auto;
+}
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Case Overview</div>
+    <div class="topbar-spacer"></div>
+    <div class="status-pill active"><div class="status-dot"></div>Analysis Running</div>
+    <button class="btn btn-ghost" onclick="exportReport()">Export Report</button>
+    <button class="btn btn-primary" id="signoff-btn" onclick="openSignoff()">Sign Off</button>
+  </div>
+  <div class="content" id="main-content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Evidence Items</div>
+        <div class="stat-value" id="stat-evidence">—</div>
+        <div class="stat-delta up" id="stat-evidence-delta">Loading...</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Contradictions</div>
+        <div class="stat-value" id="stat-contradictions" style="color:var(--red)">—</div>
+        <div class="stat-delta warn" id="stat-contr-delta">Loading...</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg. Reliability</div>
+        <div class="stat-value" id="stat-reliability">—</div>
+        <div class="stat-delta">Bayesian score</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Audit Entries</div>
+        <div class="stat-value" id="stat-audit">—</div>
+        <div class="stat-delta up">Chain intact</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px;margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Evidence — Priority Ranked</div>
+          <div class="panel-count" id="panel-evidence-count">— items</div>
+        </div>
+        <table class="data-table">
+          <thead><tr>
+            <th>File</th><th>Source</th><th>Ingested</th><th>Reliability</th><th>Status</th>
+          </tr></thead>
+          <tbody id="evidence-tbody">
+            <tr><td colspan="5" style="padding:24px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">Loading...</td></tr>
+          </tbody>
+        </table>
+        <div class="hash-display">
+          <div class="hash-label">Last Audit Entry</div>
+          <div class="hash-value" id="audit-hash-value">—</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Contradictions</div>
+          <div class="panel-count" id="panel-contr-count">— flagged</div>
+        </div>
+        <div id="contr-panel-body" style="padding:0">
+          <div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sign-Off Modal -->
+<div class="modal-overlay" id="signoff-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Analyst Sign-Off</div>
+      <div class="modal-subtitle">Case #2024-0481</div>
+    </div>
+    <div class="modal-body">
+      <div class="signoff-summary">
+        <div class="so-stat">
+          <div class="so-stat-val" id="so-evidence">—</div>
+          <div class="so-stat-label">Evidence</div>
+        </div>
+        <div class="so-stat">
+          <div class="so-stat-val" id="so-contradictions" style="color:var(--red)">—</div>
+          <div class="so-stat-label">Contradictions</div>
+        </div>
+        <div class="so-stat">
+          <div class="so-stat-val" id="so-reliability">—</div>
+          <div class="so-stat-label">Avg Reliability</div>
+        </div>
+        <div class="so-stat">
+          <div class="so-stat-val" id="so-audit" style="color:var(--green)">—</div>
+          <div class="so-stat-label">Audit Entries</div>
+        </div>
+      </div>
+
+      <div class="signoff-warning">
+        <div class="signoff-warning-icon">!</div>
+        <div id="signoff-warning-text">Sign-off records that you have reviewed all evidence and findings. This action is logged to the tamper-evident audit chain and cannot be undone.</div>
+      </div>
+
+      <div class="signoff-ack-row">
+        <input type="checkbox" id="signoff-ack" onchange="checkSignoffReady()">
+        <label for="signoff-ack" id="signoff-ack-label">I have reviewed all evidence items and confirm this analysis is ready for disposition.</label>
+      </div>
+
+      <label class="signoff-notes-label" for="signoff-notes">Analyst Notes <span style="color:var(--red)">*</span></label>
+      <textarea class="signoff-textarea" id="signoff-notes" placeholder="Document your findings, conclusions, and any observations relevant to case disposition..." oninput="checkSignoffReady()"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSignoff()">Cancel</button>
+      <button class="btn btn-primary" id="signoff-confirm" onclick="confirmSignoff()" disabled>Confirm Sign-Off</button>
+    </div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('index');
+
+async function loadDashboard() {
+  try {
+    const h = { Authorization: `Bearer ${getToken()}` };
+    const [evRes, coRes, scRes, auRes] = await Promise.all([
+      fetch(`${API_URL}/evidence`,      { headers: h }),
+      fetch(`${API_URL}/contradictions`,{ headers: h }),
+      fetch(`${API_URL}/scores`,         { headers: h }),
+      fetch(`${API_URL}/audit`,          { headers: h }),
+    ]);
+    const evidence      = evRes.ok ? await evRes.json() : [];
+    const contradictions= coRes.ok ? await coRes.json() : [];
+    const scores        = scRes.ok ? await scRes.json() : [];
+    const audit         = auRes.ok ? await auRes.json() : { ingest_events: [], system_events: [] };
+
+    const evCount   = evidence.length;
+    const coCount   = contradictions.length;
+    const auCount   = (audit.ingest_events?.length ?? 0) + (audit.system_events?.length ?? 0);
+    const avgRel    = scores.length
+      ? (scores.reduce((s, x) => s + x.score, 0) / scores.length).toFixed(2) : '—';
+    const highSev   = contradictions.filter(c => c.confidence >= 0.90).length;
+
+    // Stats
+    document.getElementById('stat-evidence').textContent = evCount;
+    document.getElementById('stat-evidence-delta').textContent = `${evCount} total`;
+    document.getElementById('stat-contradictions').textContent = coCount;
+    document.getElementById('stat-contr-delta').textContent = highSev > 0 ? `${highSev} high severity` : coCount === 0 ? 'None detected' : 'No high severity';
+    document.getElementById('stat-reliability').textContent = avgRel;
+    document.getElementById('stat-audit').textContent = auCount;
+    document.getElementById('panel-evidence-count').textContent = `${evCount} items`;
+    document.getElementById('panel-contr-count').textContent = `${coCount} flagged`;
+
+    // Signoff modal stats + dynamic text
+    document.getElementById('so-evidence').textContent = evCount;
+    document.getElementById('so-contradictions').textContent = coCount;
+    document.getElementById('so-reliability').textContent = avgRel;
+    document.getElementById('so-audit').textContent = auCount;
+    const warnSuffix = highSev > 0
+      ? ` — ${highSev} rated high severity (conf > 0.90).`
+      : coCount > 0 ? '.' : ' No contradictions detected.';
+    document.getElementById('signoff-warning-text').textContent =
+      `${coCount} unresolved contradiction${coCount !== 1 ? 's' : ''} present in this case${warnSuffix} Sign-off records that you have reviewed all evidence and findings. This action is logged to the tamper-evident audit chain and cannot be undone.`;
+    document.getElementById('signoff-ack-label').textContent =
+      `I have reviewed all ${evCount} evidence items, acknowledge the ${coCount} unresolved contradiction${coCount !== 1 ? 's' : ''}, and confirm this analysis is ready for disposition.`;
+
+    // Audit hash (latest ingest SHA-256)
+    const latest = audit.ingest_events?.[0];
+    if (latest?.sha256) {
+      document.getElementById('audit-hash-value').textContent = `sha256:${latest.sha256}`;
+    }
+
+    // Evidence table (top 5 by rank)
+    const evMap = {};
+    evidence.forEach(e => evMap[e.uuid] = e);
+    const conflictUuids = new Set();
+    contradictions.forEach(c => { conflictUuids.add(c.evidence_uuid_a); conflictUuids.add(c.evidence_uuid_b); });
+    const top5 = scores.slice(0, 5).map(s => ({ ...s, ...(evMap[s.uuid] || {}) }));
+    if (!top5.length && evidence.length) evidence.slice(0, 5).forEach(e => top5.push({ ...e, score: null }));
+    document.getElementById('evidence-tbody').innerHTML = top5.length ? top5.map(item => {
+      const score = item.score != null ? item.score.toFixed(2) : '—';
+      const pct   = item.score != null ? Math.round(item.score * 100) : 50;
+      const cls   = item.score >= 0.8 ? 'high' : item.score >= 0.6 ? 'mid' : 'low';
+      const ts    = (item.ingested_at || '').replace('T', ' ').substring(0, 16) || '—';
+      const conf  = conflictUuids.has(item.uuid);
+      return `<tr>
+        <td class="mono text-accent">${item.filename || item.uuid?.substring(0,8)}</td>
+        <td>${item.source || '—'}</td>
+        <td class="mono text-muted">${ts}</td>
+        <td><div class="score-bar-wrap"><div class="score-bar"><div class="score-fill ${cls}" style="width:${pct}%"></div></div><div class="score-num">${score}</div></div></td>
+        <td><span class="tag ${conf ? 'tag-conflict' : 'tag-clean'}">${conf ? 'Conflict' : 'Verified'}</span></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5" style="padding:24px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">No evidence ingested yet.</td></tr>';
+
+    // Contradictions panel
+    document.getElementById('contr-panel-body').innerHTML = contradictions.length ? contradictions.slice(0, 3).map((c, i, arr) => {
+      const color = c.confidence >= 0.90 ? 'var(--red)' : 'var(--amber)';
+      const border = i < arr.length - 1 ? 'border-bottom:1px solid var(--border);' : '';
+      return `<div style="padding:14px 18px;${border}">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0"></div>
+          <span class="mono" style="font-size:11px;font-weight:600;color:var(--text)">${c.context}</span>
+          <span class="mono" style="margin-left:auto;font-size:10px;color:var(--text3)">conf: ${c.confidence.toFixed(2)}</span>
+        </div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px">${c.explanation}</p>
+        <div style="display:flex;gap:6px">
+          <span class="tag tag-info" style="font-size:9px">${c.evidence_uuid_a.substring(0,8)}…</span>
+          <span class="tag tag-info" style="font-size:9px">${c.evidence_uuid_b.substring(0,8)}…</span>
+        </div>
+      </div>`;
+    }).join('') : '<div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--text3);text-align:center">No contradictions detected.</div>';
+
+  } catch (e) {
+    console.error('Dashboard load failed:', e);
+  }
+}
+
+loadDashboard();
+
+function openSignoff() {
+  document.getElementById('signoff-overlay').classList.add('open');
+  document.getElementById('signoff-ack').checked = false;
+  document.getElementById('signoff-notes').value = '';
+  document.getElementById('signoff-confirm').disabled = true;
+  document.getElementById('signoff-confirm').textContent = 'Confirm Sign-Off';
+}
+
+function closeSignoff() {
+  document.getElementById('signoff-overlay').classList.remove('open');
+}
+
+function checkSignoffReady() {
+  const ack = document.getElementById('signoff-ack').checked;
+  const notes = document.getElementById('signoff-notes').value.trim();
+  document.getElementById('signoff-confirm').disabled = !(ack && notes.length > 0);
+}
+
+async function confirmSignoff() {
+  const notes = document.getElementById('signoff-notes').value.trim();
+  const confirmBtn = document.getElementById('signoff-confirm');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Recording...';
+
+  const token = getToken();
+  let auditHash = null;
+  try {
+    await fetch(`${API_URL}/cases/2024-0481/signoff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ notes }),
+    });
+    // Fetch latest audit entry to get the real hash
+    const auRes = await fetch(`${API_URL}/audit`, { headers: { Authorization: `Bearer ${token}` } });
+    if (auRes.ok) {
+      const au = await auRes.json();
+      const latest = au.ingest_events?.[0];
+      if (latest?.sha256) auditHash = `sha256:${latest.sha256}`;
+    }
+  } catch (_) {}
+
+  closeSignoff();
+  markSigned(notes, auditHash);
+}
+
+function markSigned(notes, auditHash) {
+  const btn = document.getElementById('signoff-btn');
+  btn.textContent = 'Signed';
+  btn.style.cssText = 'background:rgba(34,197,94,0.12);color:var(--green);border:1px solid rgba(34,197,94,0.25);cursor:default;';
+  btn.disabled = true;
+
+  const user = getUser ? getUser() : null;
+  const analyst = user ? user.username : 'analyst';
+  const ts = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+  const hashDisplay = auditHash || '(hash unavailable)';
+
+  const banner = document.createElement('div');
+  banner.className = 'audit-banner';
+  banner.innerHTML = `
+    <div>
+      <div class="audit-banner-msg">Sign-off recorded — audit event written to chain</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:3px">${analyst} · ${ts}</div>
+    </div>
+    <div class="audit-banner-hash">${hashDisplay}</div>
+  `;
+
+  const content = document.getElementById('main-content');
+  content.insertBefore(banner, content.firstChild);
+}
+
+document.getElementById('signoff-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeSignoff();
+});
+
+async function exportReport() {
+  try {
+    const res = await fetch(`${API_URL}/reports`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const reports = await res.json();
+    if (!reports.length) {
+      alert('No reports generated yet. Use the Reports page to generate one.');
+      return;
+    }
+    const latest = reports[reports.length - 1];
+    const blob = new Blob([JSON.stringify(latest, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `report-${latest.report_id || 'latest'}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('Export failed: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>

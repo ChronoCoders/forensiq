@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Evidence</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+.search-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 8px 14px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+}
+.search-input::placeholder { color: var(--text3); }
+.search-input:focus { border-color: var(--accent); }
+.filter-select {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+.evidence-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.evidence-row:hover { background: var(--surface2); }
+.evidence-row:last-child { border-bottom: none; }
+.evidence-icon {
+  width: 36px; height: 36px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.icon-doc { background: rgba(59,127,255,0.12); color: var(--accent); border: 1px solid rgba(59,127,255,0.2); }
+.icon-vid { background: rgba(168,85,247,0.12); color: var(--purple); border: 1px solid rgba(168,85,247,0.2); }
+.icon-img { background: rgba(20,184,166,0.12); color: var(--teal); border: 1px solid rgba(20,184,166,0.2); }
+.icon-csv { background: rgba(245,158,11,0.12); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+.detail-drawer {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  padding: 16px 18px;
+  display: none;
+}
+.detail-drawer.open { display: block; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.detail-field label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text3);
+  display: block;
+  margin-bottom: 4px;
+}
+.detail-field span {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Evidence</div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost" id="verify-all-btn" onclick="verifyAllHashes()">Verify All Hashes</button>
+    <a href="ingest.html"><button class="btn btn-primary">+ Ingest</button></a>
+  </div>
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Items</div>
+        <div class="stat-value" id="stat-total">—</div>
+        <div class="stat-delta up">Ingested</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Verified</div>
+        <div class="stat-value text-green" id="stat-verified">—</div>
+        <div class="stat-delta">No conflicts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Conflicts</div>
+        <div class="stat-value" id="stat-conflicts" style="color:var(--red)">—</div>
+        <div class="stat-delta danger">Require review</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Scored</div>
+        <div class="stat-value" id="stat-scored" style="color:var(--amber)">—</div>
+        <div class="stat-delta">Analysis complete</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <input class="search-input" type="text" placeholder="Search evidence..." id="search">
+      <select class="filter-select" id="type-filter">
+        <option value="">All Types</option>
+        <option value="DOC">Documents</option>
+        <option value="VID">Video</option>
+        <option value="IMG">Images</option>
+        <option value="CSV">Data</option>
+      </select>
+      <select class="filter-select" id="status-filter">
+        <option value="">All Status</option>
+        <option value="Verified">Verified</option>
+        <option value="Conflict">Conflict</option>
+        <option value="Pending">Pending</option>
+      </select>
+    </div>
+
+    <div class="panel" id="evidence-panel">
+      <div class="panel-header">
+        <div class="panel-title">Evidence Items</div>
+        <div class="panel-count" id="count-label">24 items</div>
+      </div>
+      <div id="evidence-list">
+        <!-- rows injected by JS -->
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('evidence');
+
+let evidence = [];
+let filtered = [];
+
+async function loadEvidence() {
+  const h = { Authorization: `Bearer ${getToken()}` };
+  try {
+    const [evRes, scRes, coRes] = await Promise.all([
+      fetch(`${API_URL}/evidence`,       { headers: h }),
+      fetch(`${API_URL}/scores`,          { headers: h }),
+      fetch(`${API_URL}/contradictions`,  { headers: h }),
+    ]);
+    const evData = evRes.ok ? await evRes.json() : [];
+    const scData = scRes.ok ? await scRes.json() : [];
+    const coData = coRes.ok ? await coRes.json() : [];
+
+    const scoreMap = {};
+    scData.forEach(s => scoreMap[s.uuid] = s.score);
+
+    const conflictUuids = new Set();
+    coData.forEach(c => { conflictUuids.add(c.evidence_uuid_a); conflictUuids.add(c.evidence_uuid_b); });
+
+    evidence = evData.map((e, i) => {
+      const score = scoreMap[e.uuid] ?? 0;
+      const status = conflictUuids.has(e.uuid) ? 'Conflict' : (scoreMap[e.uuid] != null ? 'Verified' : 'Pending');
+      return {
+        id: 'EVD-' + String(i + 1).padStart(3, '0'),
+        type: guessType(e.filename),
+        name: e.filename,
+        source: e.source,
+        ingested: e.ingested_at.replace('T', ' ').substring(0, 16),
+        size: formatBytes(e.size_bytes),
+        score,
+        status,
+        uuid: e.uuid,
+        sha: e.sha256,
+        operator: e.operator_id,
+        entities: '—',
+        notes: '—',
+      };
+    });
+
+    // Update stats
+    const total     = evidence.length;
+    const conflicts = evidence.filter(e => e.status === 'Conflict').length;
+    const verified  = evidence.filter(e => e.status === 'Verified').length;
+    const scored    = scData.length;
+    document.getElementById('stat-total').textContent     = total;
+    document.getElementById('stat-verified').textContent  = verified;
+    document.getElementById('stat-conflicts').textContent = conflicts;
+    document.getElementById('stat-scored').textContent    = scored;
+
+  } catch (_) {
+    evidence = [];
+  }
+  filtered = [...evidence];
+  document.getElementById('count-label').textContent = filtered.length + ' items';
+  render();
+}
+
+function guessType(filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  if (['mp4','mov','avi','mkv'].includes(ext)) return 'VID';
+  if (['jpg','jpeg','png','gif','tiff','zip'].includes(ext)) return 'IMG';
+  if (['csv','xlsx','xls'].includes(ext)) return 'CSV';
+  return 'DOC';
+}
+
+function formatBytes(b) {
+  if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
+  if (b >= 1048576)    return (b / 1048576).toFixed(1) + ' MB';
+  if (b >= 1024)       return (b / 1024).toFixed(0) + ' KB';
+  return b + ' B';
+}
+
+loadEvidence();
+
+function iconClass(type) {
+  return { DOC:'icon-doc', VID:'icon-vid', IMG:'icon-img', CSV:'icon-csv' }[type] || 'icon-doc';
+}
+
+function scoreClass(s) {
+  return s >= 0.8 ? 'high' : s >= 0.6 ? 'mid' : 'low';
+}
+
+function tagClass(s) {
+  return { Verified:'tag-clean', Conflict:'tag-conflict', Pending:'tag-pending' }[s] || 'tag-pending';
+}
+
+let openRow = null;
+
+function render() {
+  const list = document.getElementById('evidence-list');
+  document.getElementById('count-label').textContent = filtered.length + ' items';
+  list.innerHTML = filtered.map((e, i) => `
+    <div>
+      <div class="evidence-row" onclick="toggleDrawer(${i})">
+        <div class="evidence-icon ${iconClass(e.type)}">${e.type}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:3px">${e.name}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${e.id} · ${e.source} · ${e.ingested}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
+          <div class="score-bar-wrap">
+            <div class="score-bar"><div class="score-fill ${scoreClass(e.score)}" style="width:${e.score*100}%"></div></div>
+            <div class="score-num">${e.score.toFixed(2)}</div>
+          </div>
+          <span class="tag ${tagClass(e.status)}">${e.status}</span>
+        </div>
+      </div>
+      <div class="detail-drawer" id="drawer-${i}">
+        <div class="detail-grid">
+          <div class="detail-field"><label>UUID</label><span>${e.uuid}</span></div>
+          <div class="detail-field"><label>Size</label><span>${e.size}</span></div>
+          <div class="detail-field"><label>Operator</label><span>${e.operator}</span></div>
+          <div class="detail-field" style="grid-column:1/-1"><label>SHA-256</label><span style="color:var(--teal);word-break:break-all">${e.sha}</span></div>
+          <div class="detail-field" style="grid-column:1/-1"><label>Entities Extracted</label><span>${e.entities}</span></div>
+          <div class="detail-field" style="grid-column:1/-1"><label>Analyst Notes</label><span style="color:var(--text2)">${e.notes}</span></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" style="font-size:10px" onclick="verifyHash('${e.uuid}', this)">Verify Hash</button>
+          <button class="btn btn-ghost" style="font-size:10px" onclick="viewRaw('${e.uuid}', this)">View Raw</button>
+          <button class="btn btn-ghost" style="font-size:10px" onclick="reanalyze('${e.uuid}', this)">Re-analyze</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleDrawer(i) {
+  const d = document.getElementById('drawer-' + i);
+  if (openRow !== null && openRow !== i) {
+    document.getElementById('drawer-' + openRow).classList.remove('open');
+  }
+  d.classList.toggle('open');
+  openRow = d.classList.contains('open') ? i : null;
+}
+
+function applyFilters() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const t = document.getElementById('type-filter').value;
+  const s = document.getElementById('status-filter').value;
+  filtered = evidence.filter(e =>
+    (!q || e.name.toLowerCase().includes(q) || e.source.toLowerCase().includes(q)) &&
+    (!t || e.type === t) &&
+    (!s || e.status === s)
+  );
+  render();
+}
+
+document.getElementById('search').addEventListener('input', applyFilters);
+document.getElementById('type-filter').addEventListener('change', applyFilters);
+document.getElementById('status-filter').addEventListener('change', applyFilters);
+
+render();
+
+// ── Button handlers ────────────────────────────────────────────────────────────
+
+async function verifyHash(uuid, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  try {
+    const res = await fetch(`${API_URL}/evidence/${uuid}/verify`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    const data = await res.json();
+    btn.textContent = data.valid ? '✓ Valid' : '✗ Mismatch';
+    btn.style.color  = data.valid ? 'var(--green)' : 'var(--red)';
+  } catch (e) {
+    btn.textContent = 'Error';
+    btn.style.color = 'var(--red)';
+    btn.disabled = false;
+  }
+}
+
+async function verifyAllHashes() {
+  const btn = document.getElementById('verify-all-btn');
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  const h = { Authorization: `Bearer ${getToken()}` };
+  let pass = 0, fail = 0;
+  for (const ev of evidence) {
+    try {
+      const res  = await fetch(`${API_URL}/evidence/${ev.uuid}/verify`, { method: 'POST', headers: h });
+      const data = await res.json();
+      data.valid ? pass++ : fail++;
+    } catch (_) { fail++; }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Verify All Hashes';
+  alert(`Hash verification complete\n✓ ${pass} valid\n✗ ${fail} failed`);
+}
+
+async function viewRaw(uuid, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Loading...';
+  try {
+    const res = await fetch(`${API_URL}/evidence/${uuid}/raw`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    btn.textContent = 'View Raw';
+  } catch (e) {
+    alert('Failed to load: ' + e.message);
+    btn.textContent = 'View Raw';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function reanalyze(uuid, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Queuing...';
+  try {
+    const res = await fetch(`${API_URL}/evidence/${uuid}/reanalyze`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    btn.textContent = 'Queued ✓';
+    btn.style.color = 'var(--green)';
+  } catch (e) {
+    btn.textContent = 'Failed';
+    btn.style.color = 'var(--red)';
+    btn.disabled = false;
+  }
+}
+
+</script>
+</body>
+</html>

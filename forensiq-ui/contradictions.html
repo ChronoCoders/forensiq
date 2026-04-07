@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Contradictions</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.contradiction-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.contradiction-card.high { border-left: 3px solid var(--red); }
+.contradiction-card.medium { border-left: 3px solid var(--amber); }
+.contradiction-card.low { border-left: 3px solid var(--text3); }
+.contradiction-card:hover { border-color: var(--border2); }
+.c-header {
+  display: flex;
+  align-items: center;
+  padding: 16px 18px;
+  gap: 12px;
+  cursor: pointer;
+}
+.c-severity-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.sev-high { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
+.sev-medium { background: rgba(245,158,11,0.1); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
+.sev-low { background: rgba(74,85,104,0.2); color: var(--text3); border: 1px solid var(--border2); }
+.c-type { font-size:14px; font-weight:600; color: var(--text); flex:1; }
+.c-conf { font-family: var(--mono); font-size:11px; color: var(--text3); }
+.c-chevron { font-size:12px; color:var(--text3); transition: transform 0.2s; }
+.c-chevron.open { transform: rotate(90deg); }
+.c-body {
+  padding: 0 18px 18px;
+  display: none;
+}
+.c-body.open { display: block; }
+.c-description {
+  font-size:13px;
+  color: var(--text2);
+  line-height: 1.6;
+  margin-bottom: 14px;
+  padding: 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.c-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.c-side {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+.c-side-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 6px;
+}
+.c-side-source {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.c-side-claim {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+}
+.c-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.c-meta-item label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text3);
+  display: block;
+  margin-bottom: 3px;
+}
+.c-meta-item span {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+}
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">Contradictions</div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost" id="rerun-btn" onclick="rerunDetection()">Re-run Detection</button>
+    <button class="btn btn-ghost" onclick="exportFlagged()">Export Flagged</button>
+  </div>
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Flagged</div>
+        <div class="stat-value" style="color:var(--red)">—</div>
+        <div class="stat-delta">CrossEncoder output</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">High Severity</div>
+        <div class="stat-value" style="color:var(--red)">—</div>
+        <div class="stat-delta danger">Conf &gt; 0.90</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Medium Severity</div>
+        <div class="stat-value" style="color:var(--amber)">—</div>
+        <div class="stat-delta warn">Conf 0.85–0.90</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Uncertain</div>
+        <div class="stat-value">—</div>
+        <div class="stat-delta">Conf &lt; 0.85</div>
+      </div>
+    </div>
+
+    <div id="contradiction-list"></div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('contradictions');
+
+let allContradictions = [];
+let openCard = null;
+
+function severity(conf) {
+  if (conf >= 0.90) return 'high';
+  if (conf >= 0.85) return 'medium';
+  return 'low';
+}
+
+function render(contradictions) {
+  const statEls = document.querySelectorAll('.stat-value');
+  const total  = contradictions.length;
+  const high   = contradictions.filter(c => c.confidence >= 0.90).length;
+  const medium = contradictions.filter(c => c.confidence >= 0.85 && c.confidence < 0.90).length;
+  const uncertain = contradictions.filter(c => c.label === 'UNCERTAIN').length;
+  if (statEls[0]) statEls[0].textContent = total;
+  if (statEls[1]) statEls[1].textContent = high;
+  if (statEls[2]) statEls[2].textContent = medium;
+  if (statEls[3]) statEls[3].textContent = uncertain;
+
+  if (total === 0) {
+    document.getElementById('contradiction-list').innerHTML =
+      '<div style="padding:40px 24px;text-align:center;font-family:var(--mono);font-size:12px;color:var(--text3)">No contradictions detected yet. Ingest evidence to run analysis.</div>';
+    return;
+  }
+
+  document.getElementById('contradiction-list').innerHTML = contradictions.map((c, i) => {
+    const sev = severity(c.confidence);
+    const ts  = c.detected_at ? c.detected_at.replace('T', ' ').substring(0, 16) + ' UTC' : '—';
+    return `
+    <div class="contradiction-card ${sev}">
+      <div class="c-header" onclick="toggle(${i})">
+        <span class="c-severity-badge sev-${sev}">${sev}</span>
+        <div class="c-type">${c.label} — ${c.context}</div>
+        <span class="c-conf">conf: ${c.confidence.toFixed(2)}</span>
+        <span class="c-chevron" id="chev-${i}">▶</span>
+      </div>
+      <div class="c-body" id="body-${i}">
+        <div class="c-description">${c.explanation}</div>
+        <div class="c-pair">
+          <div class="c-side">
+            <div class="c-side-label">Evidence A</div>
+            <div class="c-side-source" style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:4px">${c.evidence_uuid_a}</div>
+          </div>
+          <div class="c-side">
+            <div class="c-side-label">Evidence B</div>
+            <div class="c-side-source" style="font-family:var(--mono);font-size:10px;color:var(--accent);margin-bottom:4px">${c.evidence_uuid_b}</div>
+          </div>
+        </div>
+        <div class="c-meta">
+          <div class="c-meta-item"><label>ID</label><span>#${c.id}</span></div>
+          <div class="c-meta-item"><label>Model</label><span>cross-encoder/nli-deberta-v3-base</span></div>
+          <div class="c-meta-item"><label>Detected</label><span>${ts}</span></div>
+          <div class="c-meta-item"><label>Context</label><span>${c.context}</span></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggle(i) {
+  if (openCard !== null && openCard !== i) {
+    document.getElementById('body-' + openCard).classList.remove('open');
+    document.getElementById('chev-' + openCard).classList.remove('open');
+  }
+  const b  = document.getElementById('body-' + i);
+  const ch = document.getElementById('chev-' + i);
+  b.classList.toggle('open');
+  ch.classList.toggle('open');
+  openCard = b.classList.contains('open') ? i : null;
+}
+
+async function loadContradictions() {
+  try {
+    const res = await fetch(`${API_URL}/contradictions`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    allContradictions = await res.json();
+    render(allContradictions);
+  } catch (e) {
+    document.getElementById('contradiction-list').innerHTML =
+      `<div style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--red)">Failed to load: ${e.message}</div>`;
+  }
+}
+
+async function rerunDetection() {
+  const btn = document.getElementById('rerun-btn');
+  btn.disabled = true;
+  btn.textContent = 'Queuing...';
+  try {
+    const res = await fetch(`${API_URL}/contradictions/rerun`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    btn.textContent = 'Running...';
+    // Poll for updated results after a short delay to let the pipeline start.
+    setTimeout(async () => {
+      await loadContradictions();
+      btn.disabled = false;
+      btn.textContent = 'Re-run Detection';
+    }, 3000);
+  } catch (e) {
+    alert('Re-run failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Re-run Detection';
+  }
+}
+
+function exportFlagged() {
+  if (!allContradictions.length) { alert('No contradictions to export.'); return; }
+  const headers = ['id', 'label', 'confidence', 'context', 'explanation', 'evidence_uuid_a', 'evidence_uuid_b', 'detected_at'];
+  const escape  = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines   = [headers.map(escape).join(','),
+    ...allContradictions.map(c => headers.map(h => escape(c[h])).join(','))];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'contradictions.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+loadContradictions();
+</script>
+</body>
+</html>

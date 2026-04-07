@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forensiq — Archived Cases</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/base.css">
+<style>
+.filter-bar { display:flex; gap:10px; margin-bottom:20px; align-items:center; }
+.search-input {
+  flex:1; background:var(--surface); border:1px solid var(--border2); border-radius:6px;
+  padding:8px 14px; color:var(--text); font-family:var(--mono); font-size:12px; outline:none;
+}
+.search-input:focus { border-color:var(--accent); }
+.search-input::placeholder { color:var(--text3); }
+.filter-select {
+  background:var(--surface); border:1px solid var(--border2); border-radius:6px;
+  padding:8px 12px; color:var(--text2); font-family:var(--mono); font-size:11px; outline:none; cursor:pointer;
+}
+.outcome-badge {
+  font-family:var(--mono); font-size:9px; padding:2px 8px; border-radius:4px;
+  text-transform:uppercase; letter-spacing:0.3px;
+}
+.out-convicted { background:rgba(239,68,68,0.1); color:var(--red); border:1px solid rgba(239,68,68,0.2); }
+.out-acquitted { background:rgba(34,197,94,0.1); color:var(--green); border:1px solid rgba(34,197,94,0.15); }
+.out-dismissed { background:rgba(74,85,104,0.2); color:var(--text3); border:1px solid var(--border2); }
+.out-plea { background:rgba(245,158,11,0.1); color:var(--amber); border:1px solid rgba(245,158,11,0.2); }
+</style>
+</head>
+<body>
+<div id="sidebar-mount"></div>
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title"><strong>Archived Cases</strong></div>
+    <div class="topbar-spacer"></div>
+    <button class="btn btn-ghost" onclick="exportAll()">Export All</button>
+  </div>
+  <div class="content">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Archived</div>
+        <div class="stat-value" id="arc-total">0</div>
+        <div class="stat-delta">All time</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Convicted</div>
+        <div class="stat-value" id="arc-convicted" style="color:var(--red)">0</div>
+        <div class="stat-delta" id="arc-convicted-pct">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Acquitted</div>
+        <div class="stat-value text-green" id="arc-acquitted">0</div>
+        <div class="stat-delta" id="arc-acquitted-pct">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Dismissed / Plea</div>
+        <div class="stat-value" id="arc-other">0</div>
+        <div class="stat-delta" id="arc-other-pct">—</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <input class="search-input" type="text" placeholder="Search archived cases..." id="search">
+      <select class="filter-select" id="outcome-filter">
+        <option value="">All Outcomes</option>
+        <option>Convicted</option>
+        <option>Acquitted</option>
+        <option>Dismissed</option>
+        <option>Plea</option>
+      </select>
+      <select class="filter-select" id="year-filter">
+        <option value="">All Years</option>
+        <option>2024</option>
+        <option>2023</option>
+        <option>2022</option>
+      </select>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Archived Cases</div>
+        <div class="panel-count" id="count-label">34 cases</div>
+      </div>
+      <table class="data-table">
+        <thead><tr>
+          <th>Case ID</th><th>Title</th><th>Charge</th><th>Closed</th><th>Analyst</th><th>Evidence</th><th>Outcome</th>
+        </tr></thead>
+        <tbody id="archive-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="css/sidebar.js"></script>
+<script>
+renderSidebar('cases-archived');
+
+let cases = [];
+let filtered = [];
+
+const outcomeClass = { Convicted:'out-convicted', Acquitted:'out-acquitted', Dismissed:'out-dismissed', Plea:'out-plea' };
+
+function render() {
+  const total     = cases.length;
+  const convicted = cases.filter(c => c.outcome === 'Convicted').length;
+  const acquitted = cases.filter(c => c.outcome === 'Acquitted').length;
+  const other     = total - convicted - acquitted;
+  const pct = n => total ? Math.round(n / total * 100) + '%' : '—';
+  document.getElementById('arc-total').textContent         = total || '—';
+  document.getElementById('arc-convicted').textContent     = convicted || '—';
+  document.getElementById('arc-convicted-pct').textContent = pct(convicted);
+  document.getElementById('arc-acquitted').textContent     = acquitted || '—';
+  document.getElementById('arc-acquitted-pct').textContent = pct(acquitted);
+  document.getElementById('arc-other').textContent         = other || '—';
+  document.getElementById('arc-other-pct').textContent     = pct(other);
+  document.getElementById('count-label').textContent = filtered.length + ' cases';
+  document.getElementById('archive-body').innerHTML = filtered.length ? filtered.map(c => `
+    <tr>
+      <td class="mono text-accent">${c.id}</td>
+      <td style="color:var(--text);font-weight:500">${c.title}</td>
+      <td style="color:var(--text2)">${c.charge || '—'}</td>
+      <td class="mono text-muted">${(c.closed_at || '—').substring(0, 10)}</td>
+      <td style="color:var(--text2)">${c.analyst}</td>
+      <td class="mono" style="color:var(--text2);text-align:center">—</td>
+      <td><span class="outcome-badge ${outcomeClass[c.outcome] || ''}">${c.outcome || '—'}</span></td>
+    </tr>
+  `).join('') : '<tr><td colspan="7" style="padding:32px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--text3)">No archived cases.</td></tr>';
+}
+
+function applyFilters() {
+  const q = document.getElementById('search').value.toLowerCase();
+  const o = document.getElementById('outcome-filter').value;
+  const y = document.getElementById('year-filter').value;
+  filtered = cases.filter(c =>
+    (!q || (c.title || '').toLowerCase().includes(q) || c.id.toLowerCase().includes(q)) &&
+    (!o || c.outcome === o) &&
+    (!y || (c.closed_at || '').startsWith(y))
+  );
+  render();
+}
+
+async function loadArchivedCases() {
+  try {
+    const res = await fetch(`${API_URL}/cases?status=archived`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    cases    = await res.json();
+    filtered = [...cases];
+    render();
+  } catch (e) {
+    document.getElementById('archive-body').innerHTML =
+      `<tr><td colspan="7" style="padding:24px;font-family:var(--mono);font-size:11px;color:var(--red)">Failed to load: ${e.message}</td></tr>`;
+  }
+}
+
+document.getElementById('search').addEventListener('input', applyFilters);
+document.getElementById('outcome-filter').addEventListener('change', applyFilters);
+document.getElementById('year-filter').addEventListener('change', applyFilters);
+
+loadArchivedCases();
+
+function exportAll() {
+  if (!cases.length) { alert('No archived cases to export.'); return; }
+  const headers = ['id', 'title', 'charge', 'closed', 'analyst', 'evidence', 'outcome'];
+  const escape  = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const lines   = [headers.map(escape).join(','),
+    ...cases.map(c => headers.map(h => escape(c[h])).join(','))];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'archived-cases.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+</script>
+</body>
+</html>
