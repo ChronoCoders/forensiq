@@ -83,3 +83,16 @@ document.addEventListener('DOMContentLoaded', () => {
     addLogoutButton();
   }, 50);
 });
+
+// When auth.js is loaded dynamically (after DOMContentLoaded has already fired),
+// the listener above never runs — trigger auth immediately instead.
+if (document.readyState !== 'loading') {
+  (function () {
+    if (window.location.pathname.endsWith('login.html')) return;
+    if (!checkAuth()) return;
+    setTimeout(() => {
+      injectUserInfo();
+      addLogoutButton();
+    }, 50);
+  })();
+}
