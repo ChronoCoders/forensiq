@@ -103,6 +103,21 @@ async fn init_results_db(path: &Path) -> sqlx::Result<SqlitePool> {
     .execute(&pool)
     .await?;
 
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS reports (
+            report_id           TEXT PRIMARY KEY,
+            case_id             TEXT NOT NULL,
+            generated_at        TEXT NOT NULL,
+            generated_by        TEXT NOT NULL,
+            evidence_count      INTEGER NOT NULL,
+            contradiction_count INTEGER NOT NULL,
+            report_sha256       TEXT NOT NULL,
+            payload_json        TEXT NOT NULL
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
     Ok(pool)
 }
 
@@ -168,7 +183,6 @@ async fn main() {
         results: results_pool,
         results_path,
         sessions: Arc::new(Mutex::new(HashMap::new())),
-        reports: Arc::new(Mutex::new(Vec::new())),
     };
 
     // CORS: allow all origins so the static HTML UI can call the API
@@ -205,12 +219,29 @@ async fn main() {
                                              .post(handlers::cases::create_case))
         .route("/cases/:id/signoff",          post(handlers::cases::signoff));
 
+    // Background task: purge expired sessions every 5 minutes.
+    let sessions_gc = app_state.sessions.clone();
+
     let app = Router::new()
         .route("/auth/login",  post(auth::login))
         .route("/auth/logout", post(auth::logout))
         .nest("/api", api_routes)
         .layer(cors)
         .with_state(app_state);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            let now = chrono::Utc::now();
+            let mut map = sessions_gc.lock().await;
+            let before = map.len();
+            map.retain(|_, s| s.expires_at > now);
+            let removed = before - map.len();
+            if removed > 0 {
+                tracing::info!("session GC: removed {removed} expired sessions");
+            }
+        }
+    });
 
     let addr = "0.0.0.0:3000";
     info!("Forensiq API  →  http://{addr}");

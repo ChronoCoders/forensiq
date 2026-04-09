@@ -12,16 +12,21 @@ use uuid::Uuid;
 /// serialisation is deterministic (required for stable hashing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoredEvidence {
+    /// Accepts both `evidence_uuid` (Python pipeline) and `uuid` (UI shorthand).
+    #[serde(alias = "uuid")]
     pub evidence_uuid: String,
     pub filename: String,
+    #[serde(default)]
     pub document_type: String,
     pub rank: u32,
     /// Posterior reliability in (0, 1).
     pub score: f64,
     /// Confidence in the score in (0, 1).
+    #[serde(default)]
     pub confidence: f64,
     pub explanation: String,
     /// Signal name → likelihood ratio.
+    #[serde(default)]
     pub feature_contributions: BTreeMap<String, f64>,
 }
 

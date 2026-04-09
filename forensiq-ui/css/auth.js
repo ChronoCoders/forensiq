@@ -47,6 +47,10 @@ function injectUserInfo() {
     const parts = user.username.split('.');
     avatarEl.textContent = parts.map(p => p[0]?.toUpperCase() || '').join('').substring(0, 2);
   }
+
+  // Populate operator field on ingest page if present and empty.
+  const operatorEl = document.getElementById('operator');
+  if (operatorEl && !operatorEl.value) operatorEl.value = user.username;
 }
 
 function addLogoutButton() {
