@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use report::Report;
 use sqlx::SqlitePool;
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use store::EvidenceStore;
@@ -25,6 +24,4 @@ pub struct AppState {
     pub results_path: PathBuf,
     /// In-memory session store: token → Session.
     pub sessions: Arc<Mutex<HashMap<String, Session>>>,
-    /// In-memory report store (reports are appended, never deleted).
-    pub reports: Arc<Mutex<Vec<Report>>>,
 }

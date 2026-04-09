@@ -35,8 +35,8 @@ Forensiq is a pipeline of discrete, auditable stages. Each stage produces a sign
 | 4 | Contradiction detection — CrossEncoder NLI | ✅ Complete |
 | 5 | Reasoning engine — Bayesian scoring | ✅ Complete |
 | 6 | Report generator — tamper-evident JSON reports with SHA-256 integrity | ✅ Complete |
-| 7 | Review interface | 🔲 Pending |
-| 8 | Hardening — security audit, bias testing, benchmarks | 🔲 Pending |
+| 7 | Review interface — analyst dashboard, drill-down, sign-off | ✅ Complete |
+| 8 | Hardening — security audit, bias testing, benchmarks | 🔄 In Progress |
 
 ---
 
